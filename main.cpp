@@ -13,7 +13,7 @@
 
 #define xWidth 640
 #define yWidth 640
-#define nPoints 300
+#define nPoints 30000
 
 static int oldX = 0,oldY = 0;
 static bool resetCursorPos,mouseDown,rightMouseDown;
@@ -126,6 +126,7 @@ int main(int argc, char** args)
 
   //Get the attributes from the program.
   GLint posAttrib = program->getAttribLocation("pos");
+  GLint colAttrib = program->getAttribLocation("col");
   GLint mvpAttrib = program->getUniformLocation("MVP");
 
   //Set up the vao.
@@ -133,20 +134,28 @@ int main(int argc, char** args)
   glGenVertexArrays(1, &vao);
 
   //Set up the vbo and vao.
-  float* geomVals = new float[nPoints*3];
-  GLuint vboGeom;
+  float* geomVals = new float[nPoints*6];
+  GLuint vboGeom,vboCol;
 
   for(int i = 0; i < nPoints; i++)
   {
     geomVals[i*3] = ((float)(rand()%257)-128.0)/(256.0f);
-    geomVals[i*3+1] = ((float)(rand()%257)-128.0)/(256.0f);;
-    geomVals[i*3+2] = ((float)(rand()%257)-128.0)/(256.0f);;
+    geomVals[i*3+1] = ((float)(rand()%257)-128.0)/(256.0f);
+    geomVals[i*3+2] = ((float)(rand()%257)-128.0)/(256.0f);
+    geomVals[i*3+nPoints*3] = 0.001f*((float)(rand()%257)-128.0)/(256.0f);
+    geomVals[i*3+nPoints*3+1] = 0.001f*((float)(rand()%257)-128.0)/(256.0f);
+    geomVals[i*3+nPoints*3+2] = 0.001f*((float)(rand()%257)-128.0)/(256.0f);
   }
 
   //Generate and upload buffers.
   glGenBuffers(1,&vboGeom);
   glBindBuffer(GL_ARRAY_BUFFER, vboGeom);
   glBufferData(GL_ARRAY_BUFFER, nPoints*3*sizeof(float), geomVals, GL_DYNAMIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  glGenBuffers(1,&vboCol);
+  glBindBuffer(GL_ARRAY_BUFFER, vboCol);
+  glBufferData(GL_ARRAY_BUFFER, nPoints*3*sizeof(float), geomVals+nPoints*3, GL_DYNAMIC_DRAW);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
   //Free the local memory.
@@ -160,31 +169,45 @@ int main(int argc, char** args)
   glVertexAttribPointer(posAttrib,3,GL_FLOAT,GL_FALSE,0,0);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glDisableVertexAttribArray(posAttrib);
+  glBindBuffer(GL_ARRAY_BUFFER, vboCol);
+  glEnableVertexAttribArray(colAttrib);
+  glVertexAttribPointer(colAttrib,3,GL_FLOAT,GL_FALSE,0,0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glDisableVertexAttribArray(colAttrib);
   glBindVertexArray(0);
 
   float r_x = 0.0f;
   float r_y = 0.0f;
 
+  glPointSize(1.0f);
+  
   while (!glfwWindowShouldClose(window))
   {
-    /*float ratio;
+    float ratio;
     int width, height;
-    glm::mat4x4 m, p, mvp;
     glfwGetFramebufferSize(window, &width, &height);
     ratio = width / (float) height;
-    glViewport(0, 0, width, height);*/
+    glViewport(0, 0, width, height);
     glClear(GL_COLOR_BUFFER_BIT);
 
     //Update the points?
     for(int i = 0; i < nPoints; i++)
     {
-      geomVals[i*3] += 0.1f*(((float)(rand()%257)-128.0)/(256.0f)-((float)(rand()%257)-128.0)/(2*256.0f));
-      geomVals[i*3+1] += 0.1f*(((float)(rand()%257)-128.0)/(256.0f)-((float)(rand()%257)-128.0)/(2*256.0f));
-      geomVals[i*3+2] += 0.1f*(((float)(rand()%257)-128.0)/(256.0f)-((float)(rand()%257)-128.0)/(2*256.0f));
+      geomVals[i*3+nPoints*3] += 0.01f*((float)(rand()%257)-128.0)/(256.0f);
+      geomVals[i*3+nPoints*3+1] += 0.01f*((float)(rand()%257)-128.0)/(256.0f);
+      geomVals[i*3+nPoints*3+2] += 0.01f*((float)(rand()%257)-128.0)/(256.0f);
+
+      geomVals[i*3] += 0.1f*(geomVals[i*3+nPoints*3]);
+      geomVals[i*3+1] += 0.1f*(geomVals[i*3+nPoints*3+1]);
+      geomVals[i*3+2] += 0.1f*(geomVals[i*3+nPoints*3+2]);
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, vboGeom);
     glBufferData(GL_ARRAY_BUFFER, nPoints*3*sizeof(float), geomVals, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboCol);
+    glBufferData(GL_ARRAY_BUFFER, nPoints*3*sizeof(float), geomVals+nPoints*3, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     //Set the matrices.
@@ -197,21 +220,24 @@ int main(int argc, char** args)
 
     //Upload the matrix.
     View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f,0.0f,dist_z));
-    View = glm::rotate(View, rotate_x, glm::vec3(0.0f,1.0f,0.0f));
-    View = glm::rotate(View, rotate_y, glm::vec3(cos(6.28f*rotate_x/(360.0f)),sin(6.28f*rotate_y/(360.0f)),0.0f));
-    Projection = glm::perspective<float>(glm::radians(90.0f), ((float)xWidth)/((float)yWidth), 0.01f, 1000.f);
+    //View = glm::rotate(View, rotate_x, glm::vec3(sin(6.28f*rotate_x/(360.0f)),cos(6.28f*rotate_y/(360.0f)),0.0f));
+    //View = glm::rotate(View, rotate_y, glm::vec3(cos(6.28f*rotate_x/(360.0f)),sin(6.28f*rotate_y/(360.0f)),0.0f));
+    View = glm::rotate(View, rotate_x, glm::vec3(sin(6.28f*rotate_x/(360.0f)),cos(6.28f*rotate_y/(360.0f)),sin(6.28f*rotate_x/(360.0f))*cos(6.28f*rotate_y/(360.0f))));
+    View = glm::rotate(View, rotate_y, glm::vec3(cos(6.28f*rotate_y/(360.0f)),sin(6.28f*rotate_x/(360.0f)),sin(6.28f*rotate_y/(360.0f))*cos(6.28f*rotate_x/(360.0f))));
+    Projection = glm::perspective<float>(glm::radians(90.0f), ((float)width)/((float)height), 0.01f, 1000.f);
     glm::mat4 MVP = Projection * View * Model;
     glUniformMatrix4fv(mvpAttrib, 1, GL_FALSE, &MVP[0][0]);
 
     //Enable the attributes and vao.
     glBindVertexArray(vao);
     glEnableVertexAttribArray(posAttrib);
-
+    glEnableVertexAttribArray(colAttrib);
     //Draw it as points for now.
     glDrawArrays(GL_POINTS, 0, nPoints);
 
     //Disable the attributes.
     glDisableVertexAttribArray(posAttrib);
+    glDisableVertexAttribArray(colAttrib);
     glBindVertexArray(0);
 
     //unbind the program again
